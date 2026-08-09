@@ -1,13 +1,13 @@
 # reorderable_grid_view
 
-Un widget de Flutter **`ReorderableGrid<T>`** genérico y reutilizable que
-implementa un `GridView` reordenable mediante *drag and drop* nativo, **desde
-cero** y **sin dependencias externas** (solo `LongPressDraggable` y
-`DragTarget` del propio framework).
+Un widget de Flutter **`ReorderableGrid`** reutilizable que implementa un
+`GridView` reordenable mediante *drag and drop* nativo, **desde cero** y **sin
+dependencias externas** (solo `LongPressDraggable` y `DragTarget` del propio
+framework).
 
 ## Características
 
-- Genérico: `ReorderableGrid<T>` funciona con cualquier tipo de dato.
+- API por índices estilo `ListView.builder`: `itemCount` + `itemBuilder`.
 - Reordenamiento por presión larga con *feedback* visual profesional por
   defecto (escala 1.05, opacidad 0.8 y sombra ligera).
 - Celda de destino resaltada durante el arrastre.
@@ -23,7 +23,7 @@ cero** y **sin dependencias externas** (solo `LongPressDraggable` y
   vecinos se apartan con una animación suave y el grid se reorganiza según la
   celda sobrevolada; el reorden se confirma al soltar (se puede desactivar).
 - Conserva el estado de los widgets durante el reordenamiento mediante claves
-  (`itemKey` o `ValueKey<T>` por defecto) y `findChildIndexCallback`.
+  (`itemKey` o `ValueKey<int>(index)` por defecto) y `findChildIndexCallback`.
 - Personalizable: `itemKey`, `feedbackBuilder` y `childWhenDraggingBuilder`.
 - Sin paquetes de `pub.dev`.
 
@@ -62,12 +62,13 @@ class _MyWidgetState extends State<MyWidget> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SingleChildScrollView(
-        child: ReorderableGrid<String>(
-          items: _items,
+        child: ReorderableGrid(
+          itemCount: _items.length,
           onReorder: _onReorder,
-          itemBuilder: (context, item, index) => Card(
-            child: Center(child: Text(item)),
+          itemBuilder: (context, index) => Card(
+            child: Center(child: Text(_items[index])),
           ),
+          itemKey: (index) => ObjectKey(_items[index]),
           onAddItemBuilder: (context) => Padding(
             padding: const EdgeInsets.all(4),
             child: FilledButton.icon(
@@ -95,11 +96,11 @@ class _MyWidgetState extends State<MyWidget> {
 
 | Parámetro                   | Tipo                                            | Defecto                          |
 | --------------------------- | ----------------------------------------------- | -------------------------------- |
-| `items`                     | `List<T>`                                       | requerido                        |
-| `itemBuilder`               | `Widget Function(BuildContext, T, int)`         | requerido                        |
+| `itemCount`                 | `int`                                           | requerido                        |
+| `itemBuilder`               | `Widget Function(BuildContext, int)`            | requerido                        |
 | `onReorder`                 | `void Function(int oldIndex, int newIndex)`     | requerido                        |
 | `onAddItemBuilder`          | `Widget Function(BuildContext)?`                | `null`                           |
-| `itemKey`                   | `Key Function(T)?`                              | `ValueKey<T>(item)`              |
+| `itemKey`                   | `Key Function(int)?`                            | `ValueKey<int>(index)`           |
 | `feedbackBuilder`           | `Widget Function(Widget)?`                      | *feedback* por defecto           |
 | `childWhenDraggingBuilder`  | `Widget Function(Widget)?`                      | opacidad 0.2                     |
 | `liveReorder`               | `bool`                                          | `true`                           |
@@ -129,11 +130,11 @@ CustomScrollView(
     ),
     SliverPadding(
       padding: const EdgeInsets.all(16),
-      sliver: SliverReorderableGrid<String>(
-        items: _items,
+      sliver: SliverReorderableGrid(
+        itemCount: _items.length,
         onReorder: _onReorder,
-        itemBuilder: (context, item, index) => Card(
-          child: Center(child: Text(item)),
+        itemBuilder: (context, index) => Card(
+          child: Center(child: Text(_items[index])),
         ),
         crossAxisCount: 4,
         mainAxisSpacing: 6,
@@ -149,9 +150,11 @@ CustomScrollView(
 
 - El widget es *controlado*: la lista la posee el padre. Tras un arrastre se
   invoca `onReorder` y el padre debe actualizar su lista y reconstruir el grid.
-- Para que Flutter conserve el estado de los widgets al reordenar, los
-  elementos deben tener una identidad estable (sobrescribir `==`/`hashCode`)
-  o proporcionar `itemKey`.
+- Por defecto cada celda usa la clave de su posición (`ValueKey<int>(index)`),
+  por lo que el estado de los widgets **viaja con la celda, no con el
+  elemento**. Para que el estado siga al elemento (p. ej. un
+  `TextEditingController`), proporciona `itemKey` con una clave estable por
+  elemento.
 - Requiere un `MaterialApp` (o un `Material`) como ancestro, ya que el
   *feedback* de arrastre se dibuja en el overlay de la aplicación.
 

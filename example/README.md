@@ -1,6 +1,6 @@
 # reorderable_grid_view_example
 
-App de demostración del widget [`ReorderableGrid<T>`](../).
+App de demostración del widget [`ReorderableGrid`](../).
 
 ## Ejecutar
 
@@ -24,19 +24,18 @@ flutter run -d chrome
   arrastre**, con el efecto **"empujar"** en vivo: al arrastrar, las celdas se
   apartan y se deslizan para dejar paso al elemento (activable con
   `liveReorder`).
-- Un interruptor que alterna la celda final entre:
-  - el **botón "Agregar" predefinido** (icono + etiqueta con borde punteado y
-    colores personalizados), y
-  - un **footer 100% personalizado** (`FilledButton.icon`).
-- El botón "Agregar" añade un nuevo elemento al final de la lista.
-- Al soltar un elemento sobre la celda final, este pasa a la última posición.
+- La variante **sliver** (`SliverReorderableGrid`) dentro de un
+  `CustomScrollView`.
+- Una **celda final opcional** (`onAddItemBuilder`) con un botón "Agregar"
+  personalizado que añade un elemento al final de la lista. Al soltar un
+  elemento sobre esa celda, este pasa a la última posición.
 
-Los elementos se identifican mediante `ValueKey<_Item>(item)` (igualdad de
-instancia, ya que `_Item` no sobrescribe `==`), lo que permite que Flutter
-conserve el estado de cada widget cuando la cuadrícula se reordena.
+Los elementos se identifican mediante `itemKey: (index) => ObjectKey(_items[index])`
+(identidad de instancia, ya que `_Item` no sobrescribe `==`), lo que permite que
+el estado siga al elemento — y no a la celda — cuando la cuadrícula se reordena.
 
 ## Estructura
 
 - `lib/main.dart` — código de la app de ejemplo.
 - `test/widget_test.dart` — smoke tests que verifican que la app arranca y que
-  el switch alterna entre el botón predefinido y el footer personalizado.
+  el botón "Agregar" añade un nuevo elemento.

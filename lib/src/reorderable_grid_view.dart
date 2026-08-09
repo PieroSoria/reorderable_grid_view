@@ -6,10 +6,13 @@ part 'grid_geometry.dart';
 
 /// Builder usado para construir la representación visual de cada elemento.
 ///
-/// [context] es el [BuildContext] del grid, [item] es el elemento actual y
-/// [index] es su posición dentro de `items`.
-typedef ReorderableGridItemBuilder<T> =
-    Widget Function(BuildContext context, T item, int index);
+/// [context] es el [BuildContext] del grid y [index] el índice lógico del
+/// elemento dentro de `itemCount` (el índice que el padre usa en su propia
+/// lista controlada).
+typedef ReorderableGridItemBuilder = Widget Function(
+  BuildContext context,
+  int index,
+);
 
 /// Builder opcional para personalizar el *feedback* que se muestra bajo el
 /// puntero mientras se arrastra un elemento.
@@ -41,16 +44,36 @@ typedef ReorderableGridPlaceholderBuilder = Widget Function(Widget item);
 /// void _onReorder(int oldIndex, int newIndex) {
 ///   if (oldIndex == newIndex) return;
 ///   setState(() {
-///     final T item = _items.removeAt(oldIndex);
+///     final item = _items.removeAt(oldIndex);
 ///     _items.insert(newIndex, item);
 ///   });
 /// }
 /// ```
 ///
-/// `T` debe tener una identidad estable. Si no se proporciona [itemKey], se
-/// usará por defecto `ValueKey<T>(item)`, por lo que los elementos deben
-/// sobrescribir `==` y `hashCode` (o ser instancias mantenidas estables)
-/// para que Flutter conserve el estado de los widgets durante el reordenamiento.
+/// El widget es "controlado": la lista la posee el padre y este widget solo la
+/// renderiza a través de [itemCount] y [itemBuilder]. Tras una operación de
+/// arrastre se invoca [onReorder] con los índices del elemento **antes** y
+/// **después** del movimiento (ambos respecto a la lista controlada del
+/// padre).
+///
+/// ## Conservar el estado de los widgets
+///
+/// Por defecto cada celda usa la clave de su posición (`ValueKey<int>(index)`),
+/// por lo que el estado de los widgets **viaja con la celda, no con el
+/// elemento**: si tu [itemBuilder] construye widgets con estado (p. ej. un
+/// `TextEditingController`) y reordenas, el estado se quedará en la posición.
+///
+/// Para que el estado siga al *elemento*, proporciona [itemKey] con una clave
+/// estable por elemento:
+///
+/// ```dart
+/// ReorderableGrid(
+///   itemCount: _items.length,
+///   itemKey: (index) => ObjectKey(_items[index]),
+///   itemBuilder: (context, index) => _MyEditableCard(_items[index]),
+///   onReorder: _onReorder,
+/// )
+/// ```
 ///
 /// ## Efecto "empujar" durante el arrastre
 ///
@@ -78,11 +101,11 @@ typedef ReorderableGridPlaceholderBuilder = Widget Function(Widget item);
 /// Para combinarlo con otros *slivers* usa la variante [SliverReorderableGrid],
 /// que expone la misma lógica (reordenamiento, empuje y celda final) pero
 /// renderiza mediante un `SliverGrid` perezoso.
-class ReorderableGrid<T> extends _ReorderableGridBase<T> {
+class ReorderableGrid extends _ReorderableGridBase {
   /// Crea un [ReorderableGrid].
   const ReorderableGrid({
     super.key,
-    required super.items,
+    required super.itemCount,
     required super.itemBuilder,
     required super.onReorder,
     super.onAddItemBuilder,
@@ -120,10 +143,10 @@ class ReorderableGrid<T> extends _ReorderableGridBase<T> {
 ///   slivers: [
 ///     SliverPadding(
 ///       padding: const EdgeInsets.all(16),
-///       sliver: SliverReorderableGrid<String>(
-///         items: _items,
+///       sliver: SliverReorderableGrid(
+///         itemCount: _items.length,
 ///         onReorder: _onReorder,
-///         itemBuilder: (context, item, index) => _ItemCard(item),
+///         itemBuilder: (context, index) => _ItemCard(_items[index]),
 ///         crossAxisCount: 3,
 ///         childAspectRatio: 3 / 4,
 ///       ),
@@ -131,11 +154,11 @@ class ReorderableGrid<T> extends _ReorderableGridBase<T> {
 ///   ],
 /// )
 /// ```
-class SliverReorderableGrid<T> extends _ReorderableGridBase<T> {
+class SliverReorderableGrid extends _ReorderableGridBase {
   /// Crea un [SliverReorderableGrid].
   const SliverReorderableGrid({
     super.key,
-    required super.items,
+    required super.itemCount,
     required super.itemBuilder,
     required super.onReorder,
     super.onAddItemBuilder,
@@ -156,10 +179,10 @@ class SliverReorderableGrid<T> extends _ReorderableGridBase<T> {
 /// Es una clase interna: los dos widgets públicos difieren solo en que el
 /// primero produce un `GridView` (widget de caja) y el segundo un `SliverGrid`
 /// (sliver dentro de un `CustomScrollView`).
-abstract class _ReorderableGridBase<T> extends StatefulWidget {
+abstract class _ReorderableGridBase extends StatefulWidget {
   const _ReorderableGridBase({
     super.key,
-    required this.items,
+    required this.itemCount,
     required this.itemBuilder,
     required this.onReorder,
     this.onAddItemBuilder,
@@ -173,15 +196,15 @@ abstract class _ReorderableGridBase<T> extends StatefulWidget {
     this.childAspectRatio = 3 / 4,
   });
 
-  /// La lista de elementos que se renderizan y reordenan.
+  /// Número de elementos que se renderizan y reordenan.
   ///
-  /// El widget es "controlado": la lista la posee el padre y este widget solo
-  /// la lee. Tras una operación de arrastre se invoca [onReorder] y el padre
-  /// debe actualizar la lista y reconstruir este widget.
-  final List<T> items;
+  /// Es el número de elementos de la lista controlada del padre; cada uno se
+  /// construye con [itemBuilder] recibiendo su índice (0..[itemCount] - 1).
+  final int itemCount;
 
-  /// Función que construye el [Widget] de cada elemento.
-  final ReorderableGridItemBuilder<T> itemBuilder;
+  /// Función que construye el [Widget] de cada elemento a partir de su índice
+  /// lógico [index] (el índice de la lista controlada del padre).
+  final ReorderableGridItemBuilder itemBuilder;
 
   /// Callback que se invoca cuando un elemento cambia de posición.
   ///
@@ -199,17 +222,18 @@ abstract class _ReorderableGridBase<T> extends StatefulWidget {
   ///
   /// La celda construida nunca es arrastrable. Además actúa como un
   /// [DragTarget]: si se suelta un elemento sobre ella, se llama a
-  /// `onReorder(oldIndex, items.length - 1)` (el elemento va a la última
+  /// `onReorder(oldIndex, itemCount - 1)` (el elemento va a la última
   /// posición).
   final Widget? Function(BuildContext context)? onAddItemBuilder;
 
-  /// Callback que devuelve una [Key] única y estable para cada elemento.
+  /// Callback que devuelve una [Key] única y estable para cada elemento,
+  /// recibiendo su índice lógico [index].
   ///
-  /// Si es `null`, se usa `ValueKey<T>(item)` como clave por defecto. Las
-  /// claves son necesarias para que Flutter conserve el estado de los widgets
-  /// (por ejemplo, un `TextEditingController`) cuando estos cambian de celda
-  /// tras un reordenamiento.
-  final Key Function(T item)? itemKey;
+  /// Si es `null`, se usa `ValueKey<int>(index)` como clave por defecto: el
+  /// estado viaja con la **celda**, no con el elemento. Proporciona este
+  /// callback para que el estado de los widgets siga al elemento al reordenar
+  /// (por ejemplo, conservar un `TextEditingController` en la celda correcta).
+  final Key Function(int index)? itemKey;
 
   /// Personaliza el widget que se muestra debajo del dedo durante el arrastre.
   final ReorderableGridFeedbackBuilder? feedbackBuilder;
@@ -239,10 +263,10 @@ abstract class _ReorderableGridBase<T> extends StatefulWidget {
   final double childAspectRatio;
 
   @override
-  State<_ReorderableGridBase<T>> createState() => _ReorderableGridState<T>();
+  State<_ReorderableGridBase> createState() => _ReorderableGridState();
 }
 
-class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
+class _ReorderableGridState extends State<_ReorderableGridBase> {
   /// Clave estable y única para la celda final.
   static const Key _footerKey = ValueKey<String>('__reorderable_grid_footer__');
 
@@ -262,31 +286,30 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
   /// invocar [onAddItemBuilder] varias veces por frame).
   Widget? _resolvedAddItemCell;
 
-  /// Lista que se muestra durante un arrastre con [liveReorder].
+  /// Permutación de índices lógicos que se muestra durante un arrastre con
+  /// [liveReorder].
   ///
-  /// `null` fuera del arrastre; durante el arrastre contiene una copia de
-  /// [ReorderableGrid.items] que se reordena en vivo mientras el elemento
-  /// sobrevuela celdas.
+  /// `null` fuera del arrastre; durante el arrastre contiene `[0, 1, ...,
+  /// itemCount - 1]` reordenado en vivo mientras el elemento sobrevuela
+  /// celdas. La posición `_preview[i]` es el índice lógico (de la lista
+  /// controlada del padre) que ocupa la celda `i`, y se usa para construir el
+  /// elemento correcto sin duplicar la lista del padre.
   ///
   /// Es un [ValueNotifier] para que cada cambio de orden durante el arrastre
   /// reconstruya **solo el grid** (vía `ValueListenableBuilder`) y no el
   /// [State] completo: evita re-resolver la celda final ([onAddItemBuilder])
   /// y re-crear el `LayoutBuilder` en cada paso del arrastre.
-  final ValueNotifier<List<T>?> _preview = ValueNotifier<List<T>?>(null);
+  final ValueNotifier<List<int>?> _preview = ValueNotifier<List<int>?>(null);
 
-  /// Índice original (en la lista del padre) del elemento que se arrastra.
+  /// Índice lógico (en la lista del padre) del elemento que se arrastra.
   int? _originalIndex;
 
   /// Posición actual dentro de [_preview] del elemento que se arrastra.
   int? _previewMovedIndex;
 
-  /// Último índice en el que se dibujó cada clave, para calcular el
+  /// Última posición en la que se dibujó cada clave, para calcular el
   /// desplazamiento inicial de la animación de deslizamiento.
   final Map<Key, int> _lastIndexByKey = <Key, int>{};
-
-  /// La lista que se renderiza: durante un arrastre la previsualización, en
-  /// reposo la lista controlada del padre.
-  List<T> get _displayed => _preview.value ?? widget.items;
 
   @override
   void dispose() {
@@ -294,9 +317,17 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
     super.dispose();
   }
 
-  /// Resuelve la clave de un elemento: usa [ReorderableGrid.itemKey] si está
-  /// definido o cae en `ValueKey<T>(item)` en caso contrario.
-  Key _keyOf(T item) => widget.itemKey?.call(item) ?? ValueKey<T>(item);
+  /// Resuelve la clave de un elemento por su índice lógico: usa
+  /// [ReorderableGrid.itemKey] si está definido o cae en
+  /// `ValueKey<int>(index)` en caso contrario.
+  Key _keyOf(int index) => widget.itemKey?.call(index) ?? ValueKey<int>(index);
+
+  /// El índice lógico (de la lista controlada del padre) que ocupa la posición
+  /// [position] del grid. En reposo coincide con la propia posición.
+  int _itemIndexAt(int position) {
+    final List<int>? order = _preview.value;
+    return order != null ? order[position] : position;
+  }
 
   /// `true` cuando el grid debe mostrar una celda final fija.
   bool get _hasFooterCell => _resolvedAddItemCell != null;
@@ -305,12 +336,13 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
   /// de un elemento (o de la celda final) para conservar el estado de los
   /// widgets cuando la cuadrícula se reordena.
   int? _findChildIndexByKey(Key key) {
-    final List<T> displayed = _displayed;
     if (key == _footerKey && _hasFooterCell) {
-      return displayed.length;
+      return widget.itemCount;
     }
-    for (var i = 0; i < displayed.length; i++) {
-      if (_keyOf(displayed[i]) == key) return i;
+    final List<int>? order = _preview.value;
+    for (var i = 0; i < widget.itemCount; i++) {
+      final int logical = order != null ? order[i] : i;
+      if (_keyOf(logical) == key) return i;
     }
     return null;
   }
@@ -321,8 +353,8 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
   /// ya el último (cayendo entonces en la última posición).
   bool _canDropOnFooter(int oldIndex) {
     return oldIndex >= 0 &&
-        widget.items.isNotEmpty &&
-        oldIndex != widget.items.length - 1;
+        widget.itemCount > 0 &&
+        oldIndex != widget.itemCount - 1;
   }
 
   /// Resuelve la celda final: usa [onAddItemBuilder] si está definido, o `null`
@@ -331,30 +363,32 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
     return widget.onAddItemBuilder?.call(context);
   }
 
-  /// Inicia una operación de arrastre: congela una previsualización de la
-  /// lista que se podrá reordenar en vivo sin tocar la lista del padre.
+  /// Inicia una operación de arrastre: congela una permutación identidad de los
+  /// índices lógicos que se podrá reordenar en vivo sin tocar la lista del
+  /// padre.
   void _beginDrag(int index) {
     _originalIndex = index;
     _previewMovedIndex = index;
     // Sin animaciones al iniciar el arrastre.
     _lastIndexByKey.clear();
-    _preview.value = List<T>.of(widget.items);
+    _preview.value =
+        List<int>.generate(widget.itemCount, (int i) => i);
   }
 
-  /// Reordena la previsualización moviendo al elemento arrastrado (que está en
+  /// Reordena la permutación moviendo al elemento arrastrado (que está en
   /// [_previewMovedIndex]) a la posición [targetIndex].
   void _previewMoveTo(int targetIndex) {
-    final List<T>? preview = _preview.value;
+    final List<int>? order = _preview.value;
     final int? moved = _previewMovedIndex;
-    if (preview == null ||
+    if (order == null ||
         moved == null ||
         targetIndex == moved ||
         targetIndex < 0 ||
-        targetIndex >= preview.length) {
+        targetIndex >= order.length) {
       return;
     }
-    final List<T> reordered = List<T>.of(preview);
-    final T dragged = reordered.removeAt(moved);
+    final List<int> reordered = List<int>.of(order);
+    final int dragged = reordered.removeAt(moved);
     reordered.insert(targetIndex, dragged);
     _previewMovedIndex = targetIndex;
     _preview.value = reordered;
@@ -409,16 +443,15 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
 
     // El grid escucha los cambios del orden en vivo (arrastre) para
     // reconstruirse solo él, sin reconstruir el resto del widget.
-    return ValueListenableBuilder<List<T>?>(
+    return ValueListenableBuilder<List<int>?>(
       valueListenable: _preview,
-      builder: (context, preview, _) {
+      builder: (context, _, _) {
         final bool hasFooter = _hasFooterCell;
-        final int itemCount =
-            (preview ?? widget.items).length + (hasFooter ? 1 : 0);
+        final int itemCount = widget.itemCount + (hasFooter ? 1 : 0);
 
         // Variante "caja": un GridView (puede anidarse y desplazarse solo).
-        if (widget is ReorderableGrid<T>) {
-          final ReorderableGrid<T> box = widget as ReorderableGrid<T>;
+        if (widget is ReorderableGrid) {
+          final ReorderableGrid box = widget as ReorderableGrid;
           return RepaintBoundary(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -492,10 +525,11 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
     );
   }
 
-  /// Construye una celda deslizable + `DragTarget` para el elemento en [index].
+  /// Construye una celda deslizable + `DragTarget` para la posición [index] del
+  /// grid (su contenido es el elemento lógico [_itemIndexAt]).
   Widget _buildItem(BuildContext context, int index, _GridGeometry geometry) {
-    final T item = _displayed[index];
-    final Key key = _keyOf(item);
+    final int logicalIndex = _itemIndexAt(index);
+    final Key key = _keyOf(logicalIndex);
 
     // Punto de partida del deslizamiento: desde dónde venía la celda.
     final int? previousIndex = _lastIndexByKey[key];
@@ -512,8 +546,8 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
         start: start,
         duration: _pushDuration,
         child: DragTarget<int>(
-          // Se acepta un arrastre salvo cuando se suelta sobre la celda que
-          // ya ocupa el elemento (compara el índice original transportado con
+          // Se acepta un arrastre salvo cuando se suelta sobre la celda de
+          // origen del elemento (compara el índice original transportado con
           // la celda sobrevolada).
           onWillAcceptWithDetails: (details) {
             if (details.data == index) {
@@ -550,22 +584,21 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
               builder: (context, constraints) {
                 final Widget itemWidget = widget.itemBuilder(
                   context,
-                  item,
-                  index,
+                  logicalIndex,
                 );
 
                 return LongPressDraggable<int>(
-                  // El dato que transporta el arrastre es el índice del
+                  // El dato que transporta el arrastre es el índice lógico del
                   // elemento en el momento en que empezó (queda fijo durante
                   // todo el arrastre, aunque la vista se reordene en vivo).
-                  data: index,
+                  data: logicalIndex,
                   // Asegura que toda la celda reciba el gesto de presión larga.
                   hitTestBehavior: HitTestBehavior.opaque,
                   // El feedback viaja con las dimensiones exactas de la celda,
                   // evitando que los elementos se reescalen al soltarse.
                   feedback: _buildFeedback(itemWidget, constraints.biggest),
                   childWhenDragging: _buildChildWhenDragging(itemWidget),
-                  onDragStarted: () => _beginDrag(index),
+                  onDragStarted: () => _beginDrag(logicalIndex),
                   onDraggableCanceled: (velocity, offset) => _cancelDrag(),
                   child: _applyHoverHighlight(itemWidget, isHovering),
                 );
@@ -578,7 +611,7 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
   }
 
   /// Construye la celda final del grid: el widget devuelto por
-  /// [ReorderableGrid.onAddItemBuilder] o el botón "Agregar" predefinido.
+  /// [ReorderableGrid.onAddItemBuilder].
   ///
   /// Esta celda nunca es un `Draggable` (no se puede mover). Se envuelve en un
   /// [DragTarget] para que, al soltar un elemento sobre ella, dicho elemento
@@ -592,9 +625,9 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
         final int oldIndex = details.data;
         if (!_canDropOnFooter(oldIndex)) return;
         if (widget.liveReorder) {
-          _commitDrag(finalIndex: widget.items.length - 1);
+          _commitDrag(finalIndex: widget.itemCount - 1);
         } else {
-          widget.onReorder(oldIndex, widget.items.length - 1);
+          widget.onReorder(oldIndex, widget.itemCount - 1);
         }
       },
       builder: (context, candidateData, rejectedData) {

@@ -92,7 +92,7 @@ class _HomePageState extends State<_HomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ReorderableGrid<T>'),
+        title: const Text('ReorderableGrid'),
         backgroundColor: scheme.primary,
         foregroundColor: scheme.onPrimary,
       ),
@@ -110,11 +110,16 @@ class _HomePageState extends State<_HomePage> {
           ),
           SliverPadding(
             padding: const EdgeInsets.all(16),
-            sliver: SliverReorderableGrid<_Item>(
-              items: _items,
+            sliver: SliverReorderableGrid(
+              itemCount: _items.length,
               onReorder: _onReorder,
-              itemBuilder: (context, item, index) =>
-                  _ItemCard(item: item, index: index),
+              itemBuilder: (context, index) =>
+                  _ItemCard(item: _items[index], index: index),
+              // En lugar de la clave por defecto (basada en la posición),
+              // seguimos el elemento usando su identidad: así, si las tarjetas
+              // tuvieran widgets con estado (p. ej. un TextField), el estado
+              // viajaría con la tarjeta y no se quedaría en la celda.
+              itemKey: (index) => ObjectKey(_items[index]),
               // Celda final opcional y no arrastrable. El builder puede
               // devolver `null` para no mostrar ninguna celda (y poner el
               // botón "Agregar" fuera del grid, en tu propio layout). Soltar

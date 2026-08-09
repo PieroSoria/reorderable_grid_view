@@ -16,7 +16,7 @@ class _Harness extends StatefulWidget {
 
   final List<String> initialItems;
   final bool showFooter;
-  final Key Function(String item)? itemKey;
+  final Key Function(int index)? itemKey;
   final bool liveReorder;
 
   @override
@@ -29,8 +29,8 @@ class _HarnessState extends State<_Harness> {
 
   @override
   Widget build(BuildContext context) {
-    return ReorderableGrid<String>(
-      items: items,
+    return ReorderableGrid(
+      itemCount: items.length,
       itemKey: widget.itemKey,
       onReorder: (oldIndex, newIndex) {
         moves.add([oldIndex, newIndex]);
@@ -40,10 +40,10 @@ class _HarnessState extends State<_Harness> {
           items.insert(newIndex, moved);
         });
       },
-      itemBuilder: (context, item, index) => Container(
+      itemBuilder: (context, index) => Container(
         color: index.isEven ? Colors.blueGrey : Colors.teal,
         alignment: Alignment.center,
-        child: Text(item),
+        child: Text(items[index]),
       ),
       onAddItemBuilder: widget.showFooter
           ? (context) => const ColoredBox(
@@ -111,24 +111,24 @@ void main() {
     expect(a.dx, lessThan(b.dx));
   });
 
-  testWidgets('itemBuilder recibe el item y el índice correctos', (
+  testWidgets('itemBuilder recibe el índice correcto de cada elemento', (
     tester,
   ) async {
     _setSurfaceSize(tester);
-    final List<String> seen = [];
+    final List<int> seen = [];
 
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: Center(
-            child: ReorderableGrid<String>(
-              items: const ['A', 'B'],
+            child: ReorderableGrid(
+              itemCount: 2,
               onReorder: (oldIndex, newIndex) {},
-              itemBuilder: (context, item, index) {
-                seen.add('$item@$index');
+              itemBuilder: (context, index) {
+                seen.add(index);
                 return Container(
                   alignment: Alignment.center,
-                  child: Text('$item$index'),
+                  child: Text('item$index'),
                 );
               },
               crossAxisCount: 2,
@@ -139,9 +139,9 @@ void main() {
       ),
     );
 
-    expect(seen, ['A@0', 'B@1']);
-    expect(find.text('A0'), findsOneWidget);
-    expect(find.text('B1'), findsOneWidget);
+    expect(seen, [0, 1]);
+    expect(find.text('item0'), findsOneWidget);
+    expect(find.text('item1'), findsOneWidget);
   });
 
   testWidgets('el footer aparece justo después del último elemento', (
@@ -261,7 +261,7 @@ void main() {
       _wrap(
         _Harness(
           initialItems: const ['A', 'B', 'C', 'D'],
-          itemKey: (item) => ValueKey('cell_$item'),
+          itemKey: (index) => ValueKey('cell_$index'),
         ),
       ),
     );
@@ -303,11 +303,13 @@ void main() {
     _setSurfaceSize(tester);
     await tester.pumpWidget(
       _wrap(
-        ReorderableGrid<String>(
-          items: const ['A', 'B', 'C', 'D'],
+        ReorderableGrid(
+          itemCount: 4,
           onReorder: (oldIndex, newIndex) {},
-          itemBuilder: (context, item, index) =>
-              Container(alignment: Alignment.center, child: Text(item)),
+          itemBuilder: (context, index) => Container(
+            alignment: Alignment.center,
+            child: Text('item$index'),
+          ),
           onAddItemBuilder: (context) => null,
           crossAxisCount: 2,
           childAspectRatio: 1,
@@ -523,8 +525,8 @@ class _SliverHarnessState extends State<_SliverHarness> {
           slivers: [
             SliverPadding(
               padding: const EdgeInsets.all(16),
-              sliver: SliverReorderableGrid<String>(
-                items: items,
+              sliver: SliverReorderableGrid(
+                itemCount: items.length,
                 onReorder: (oldIndex, newIndex) {
                   moves.add([oldIndex, newIndex]);
                   if (oldIndex == newIndex) return;
@@ -533,10 +535,10 @@ class _SliverHarnessState extends State<_SliverHarness> {
                     items.insert(newIndex, moved);
                   });
                 },
-                itemBuilder: (context, item, index) => Container(
+                itemBuilder: (context, index) => Container(
                   color: index.isEven ? Colors.blueGrey : Colors.teal,
                   alignment: Alignment.center,
-                  child: Text(item),
+                  child: Text(items[index]),
                 ),
                 onAddItemBuilder: widget.showFooter
                     ? (context) => const ColoredBox(
