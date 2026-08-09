@@ -4,6 +4,8 @@
 * Efecto "empujar" en vivo durante el arrastre (`liveReorder`, animado).
 * Celda final opcional `onAddItemBuilder`, no arrastrable y que puede devolver
   `null` para no mostrarla (con DragTarget hacia la última posición).
+* Variante sliver `SliverReorderableGrid` para usar dentro de un
+  `CustomScrollView` (misma lógica de arrastre y empuje).
 * Botón "Agregar" desacoplado: sin `onAddItemBuilder` no hay celda final y el
   botón puede ir en cualquier lugar del layout del usuario.
 * Implementación desacoplada en `lib/src/` y exportada desde el paquete.

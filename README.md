@@ -17,6 +17,8 @@ cero** y **sin dependencias externas** (solo `LongPressDraggable` y
 - Botón "Agregar" totalmente desacoplado: sin `onAddItemBuilder` el grid no
   tiene celda final y puedes poner tu propio botón en cualquier lugar del
   layout.
+- **Variante sliver**: `SliverReorderableGrid` para usarse dentro de un
+  `CustomScrollView` (misma lógica de arrastre, empuje y celda final).
 - Efecto **"empujar"** en vivo (`liveReorder`): al arrastrar un elemento los
   vecinos se apartan con una animación suave y el grid se reorganiza según la
   celda sobrevolada; el reorden se confirma al soltar (se puede desactivar).
@@ -105,8 +107,43 @@ class _MyWidgetState extends State<MyWidget> {
 | `mainAxisSpacing`           | `double`                                        | `6.0`                            |
 | `crossAxisSpacing`          | `double`                                        | `6.0`                            |
 | `childAspectRatio`          | `double`                                        | `3 / 4`                          |
-| `shrinkWrap`                | `bool`                                          | `true`                           |
-| `physics`                   | `ScrollPhysics?`                                | `NeverScrollableScrollPhysics()` |
+| `shrinkWrap`                | `bool` (solo `ReorderableGrid`)                 | `true`                           |
+| `physics`                   | `ScrollPhysics?` (solo `ReorderableGrid`)       | `NeverScrollableScrollPhysics()` |
+
+> `SliverReorderableGrid` acepta los mismos parámetros que la tabla (salvo
+> `shrinkWrap` y `physics`), para usarse dentro de un `CustomScrollView`.
+
+## En un `CustomScrollView` (variante sliver)
+
+Para combinar el grid con otros *slivers* (p. ej. una cabecera que se colapsa
+con el scroll), usa `SliverReorderableGrid`:
+
+```dart
+CustomScrollView(
+  slivers: [
+    SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text('Mi cabecera'),
+      ),
+    ),
+    SliverPadding(
+      padding: const EdgeInsets.all(16),
+      sliver: SliverReorderableGrid<String>(
+        items: _items,
+        onReorder: _onReorder,
+        itemBuilder: (context, item, index) => Card(
+          child: Center(child: Text(item)),
+        ),
+        crossAxisCount: 4,
+        mainAxisSpacing: 6,
+        crossAxisSpacing: 6,
+        childAspectRatio: 3 / 4,
+      ),
+    ),
+  ],
+)
+```
 
 ## Notas
 
@@ -121,7 +158,8 @@ class _MyWidgetState extends State<MyWidget> {
 ## Ejemplo ejecutable
 
 Dentro de la carpeta `example/` hay una app de demostración completa (grid
-reordenable con su celda final "Agregar" personalizada). Para ejecutarla:
+reordenable dentro de un `CustomScrollView` con su celda final "Agregar"
+personalizada). Para ejecutarla:
 
 ```sh
 cd example

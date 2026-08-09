@@ -7,7 +7,7 @@ part 'grid_geometry.dart';
 /// Builder usado para construir la representación visual de cada elemento.
 ///
 /// [context] es el [BuildContext] del grid, [item] es el elemento actual y
-/// [index] es su posición dentro de [ReorderableGrid.items].
+/// [index] es su posición dentro de `items`.
 typedef ReorderableGridItemBuilder<T> =
     Widget Function(BuildContext context, T item, int index);
 
@@ -72,9 +72,92 @@ typedef ReorderableGridPlaceholderBuilder = Widget Function(Widget item);
 ///
 /// En cualquier caso, soltar un elemento sobre esa celda final lo mueve a la
 /// última posición de la lista.
-class ReorderableGrid<T> extends StatefulWidget {
+///
+/// ## Dentro de un `CustomScrollView`
+///
+/// Para combinarlo con otros *slivers* usa la variante [SliverReorderableGrid],
+/// que expone la misma lógica (reordenamiento, empuje y celda final) pero
+/// renderiza mediante un `SliverGrid` perezoso.
+class ReorderableGrid<T> extends _ReorderableGridBase<T> {
   /// Crea un [ReorderableGrid].
   const ReorderableGrid({
+    super.key,
+    required super.items,
+    required super.itemBuilder,
+    required super.onReorder,
+    super.onAddItemBuilder,
+    super.itemKey,
+    super.feedbackBuilder,
+    super.childWhenDraggingBuilder,
+    super.liveReorder,
+    super.crossAxisCount,
+    super.mainAxisSpacing,
+    super.crossAxisSpacing,
+    super.childAspectRatio,
+    this.shrinkWrap = true,
+    this.physics = const NeverScrollableScrollPhysics(),
+  });
+
+  /// Si es `true`, el grid se ajusta a la altura de su contenido para poder
+  /// ser anidado en widgets como un [SingleChildScrollView].
+  final bool shrinkWrap;
+
+  /// Física de scroll del grid. Por defecto no es desplazable.
+  final ScrollPhysics physics;
+}
+
+/// La variante *sliver* de [ReorderableGrid], para usarse dentro de un
+/// [CustomScrollView] (o cualquier lugar donde se necesite un [SliverGrid]).
+///
+/// Expone exactamente los mismos parámetros que [ReorderableGrid] (salvo
+/// [ReorderableGrid.shrinkWrap] y [ReorderableGrid.physics], que no aplican a
+/// un sliver) y comparte la misma lógica: reordenamiento por presión larga,
+/// efecto "empujar" con [SliverReorderableGrid.liveReorder] y la celda final
+/// opcional [SliverReorderableGrid.onAddItemBuilder].
+///
+/// ```dart
+/// CustomScrollView(
+///   slivers: [
+///     SliverPadding(
+///       padding: const EdgeInsets.all(16),
+///       sliver: SliverReorderableGrid<String>(
+///         items: _items,
+///         onReorder: _onReorder,
+///         itemBuilder: (context, item, index) => _ItemCard(item),
+///         crossAxisCount: 3,
+///         childAspectRatio: 3 / 4,
+///       ),
+///     ),
+///   ],
+/// )
+/// ```
+class SliverReorderableGrid<T> extends _ReorderableGridBase<T> {
+  /// Crea un [SliverReorderableGrid].
+  const SliverReorderableGrid({
+    super.key,
+    required super.items,
+    required super.itemBuilder,
+    required super.onReorder,
+    super.onAddItemBuilder,
+    super.itemKey,
+    super.feedbackBuilder,
+    super.childWhenDraggingBuilder,
+    super.liveReorder,
+    super.crossAxisCount,
+    super.mainAxisSpacing,
+    super.crossAxisSpacing,
+    super.childAspectRatio,
+  });
+}
+
+/// Configuración y parámetros comunes compartidos entre [ReorderableGrid] y
+/// [SliverReorderableGrid].
+///
+/// Es una clase interna: los dos widgets públicos difieren solo en que el
+/// primero produce un `GridView` (widget de caja) y el segundo un `SliverGrid`
+/// (sliver dentro de un `CustomScrollView`).
+abstract class _ReorderableGridBase<T> extends StatefulWidget {
+  const _ReorderableGridBase({
     super.key,
     required this.items,
     required this.itemBuilder,
@@ -88,8 +171,6 @@ class ReorderableGrid<T> extends StatefulWidget {
     this.mainAxisSpacing = 6.0,
     this.crossAxisSpacing = 6.0,
     this.childAspectRatio = 3 / 4,
-    this.shrinkWrap = true,
-    this.physics = const NeverScrollableScrollPhysics(),
   });
 
   /// La lista de elementos que se renderizan y reordenan.
@@ -157,18 +238,11 @@ class ReorderableGrid<T> extends StatefulWidget {
   /// Relación ancho/alto de cada celda.
   final double childAspectRatio;
 
-  /// Si es `true`, el grid se ajusta a la altura de su contenido para poder
-  /// ser anidado en widgets como un [SingleChildScrollView].
-  final bool shrinkWrap;
-
-  /// Física de scroll del grid. Por defecto no es desplazable.
-  final ScrollPhysics physics;
-
   @override
-  State<ReorderableGrid<T>> createState() => _ReorderableGridState<T>();
+  State<_ReorderableGridBase<T>> createState() => _ReorderableGridState<T>();
 }
 
-class _ReorderableGridState<T> extends State<ReorderableGrid<T>> {
+class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
   /// Clave estable y única para la celda final.
   static const Key _footerKey = ValueKey<String>('__reorderable_grid_footer__');
 
@@ -185,10 +259,10 @@ class _ReorderableGridState<T> extends State<ReorderableGrid<T>> {
   static const Duration _pushDuration = Duration(milliseconds: 220);
 
   /// Celda final resuelta en el último [build] (cacheada por pasada para no
-  /// invocar [ReorderableGrid.onAddItemBuilder] varias veces por frame).
+  /// invocar [onAddItemBuilder] varias veces por frame).
   Widget? _resolvedAddItemCell;
 
-  /// Lista que se muestra durante un arrastre con [ReorderableGrid.liveReorder].
+  /// Lista que se muestra durante un arrastre con [liveReorder].
   ///
   /// `null` fuera del arrastre; durante el arrastre contiene una copia de
   /// [ReorderableGrid.items] que se reordena en vivo mientras el elemento
@@ -216,9 +290,9 @@ class _ReorderableGridState<T> extends State<ReorderableGrid<T>> {
   /// `true` cuando el grid debe mostrar una celda final fija.
   bool get _hasFooterCell => _resolvedAddItemCell != null;
 
-  /// Permite a `SliverChildBuilderDelegate` localizar, mediante su clave, el
-  /// índice de un elemento (o de la celda final) para conservar el estado de
-  /// los widgets cuando la cuadrícula se reordena.
+  /// Permite al delegado de children localizar, mediante su clave, el índice
+  /// de un elemento (o de la celda final) para conservar el estado de los
+  /// widgets cuando la cuadrícula se reordena.
   int? _findChildIndexByKey(Key key) {
     final List<T> displayed = _displayed;
     if (key == _footerKey && _hasFooterCell) {
@@ -240,8 +314,8 @@ class _ReorderableGridState<T> extends State<ReorderableGrid<T>> {
         oldIndex != widget.items.length - 1;
   }
 
-  /// Resuelve la celda final: usa [ReorderableGrid.onAddItemBuilder] si está
-  /// definido, o `null` en caso contrario (sin celda final).
+  /// Resuelve la celda final: usa [onAddItemBuilder] si está definido, o `null`
+  /// en caso contrario (sin celda final).
   Widget? _resolveAddItemCell(BuildContext context) {
     return widget.onAddItemBuilder?.call(context);
   }
@@ -278,7 +352,7 @@ class _ReorderableGridState<T> extends State<ReorderableGrid<T>> {
   }
 
   /// Confirma el arrastre: restaura la vista controlada del padre e invoca
-  /// [ReorderableGrid.onReorder] con la posición final del elemento.
+  /// [onReorder] con la posición final del elemento.
   ///
   /// Si [finalIndex] es `null` se usa la posición actual de la previsualización
   /// ([_previewMovedIndex]); en caso contrario `finalIndex` (p. ej. la última
@@ -328,39 +402,75 @@ class _ReorderableGridState<T> extends State<ReorderableGrid<T>> {
   Widget build(BuildContext context) {
     _resolvedAddItemCell = _resolveAddItemCell(context);
 
-    final List<T> displayed = _displayed;
     final bool hasFooter = _hasFooterCell;
-    final int itemCount = displayed.length + (hasFooter ? 1 : 0);
+    final int itemCount = _displayed.length + (hasFooter ? 1 : 0);
 
-    return LayoutBuilder(
+    // Variante "caja": un GridView (puede anidarse y desplazarse solo).
+    if (widget is ReorderableGrid<T>) {
+      final ReorderableGrid<T> box = widget as ReorderableGrid<T>;
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final _GridGeometry geometry = _GridGeometry.fromConstraints(
+            constraints,
+            columns: widget.crossAxisCount,
+            crossAxisSpacing: widget.crossAxisSpacing,
+            mainAxisSpacing: widget.mainAxisSpacing,
+            childAspectRatio: widget.childAspectRatio,
+          );
+
+          return GridView.builder(
+            shrinkWrap: box.shrinkWrap,
+            physics: box.physics,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: widget.crossAxisCount,
+              mainAxisSpacing: widget.mainAxisSpacing,
+              crossAxisSpacing: widget.crossAxisSpacing,
+              childAspectRatio: widget.childAspectRatio,
+            ),
+            itemCount: itemCount,
+            // Clave -> índice, para migrar correctamente los elementos
+            // existentes (conservando su Estado) a sus nuevas celdas.
+            findChildIndexCallback: _findChildIndexByKey,
+            itemBuilder: (context, index) {
+              final bool isFooter = hasFooter && index == itemCount - 1;
+              return isFooter
+                  ? _buildFooter(context)
+                  : _buildItem(context, index, geometry);
+            },
+          );
+        },
+      );
+    }
+
+    // Variante sliver: un SliverGrid para usar dentro de un CustomScrollView.
+    return SliverLayoutBuilder(
       builder: (context, constraints) {
         final _GridGeometry geometry = _GridGeometry.fromConstraints(
-          constraints,
+          // El ancho disponible es el eje transversal del sliver.
+          BoxConstraints(maxWidth: constraints.crossAxisExtent),
           columns: widget.crossAxisCount,
           crossAxisSpacing: widget.crossAxisSpacing,
           mainAxisSpacing: widget.mainAxisSpacing,
           childAspectRatio: widget.childAspectRatio,
         );
 
-        return GridView.builder(
-          shrinkWrap: widget.shrinkWrap,
-          physics: widget.physics,
+        return SliverGrid(
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: widget.crossAxisCount,
             mainAxisSpacing: widget.mainAxisSpacing,
             crossAxisSpacing: widget.crossAxisSpacing,
             childAspectRatio: widget.childAspectRatio,
           ),
-          itemCount: itemCount,
-          // Clave -> índice, para migrar correctamente los elementos existentes
-          // (conservando su Estado) a sus nuevas celdas tras un reordenamiento.
-          findChildIndexCallback: _findChildIndexByKey,
-          itemBuilder: (context, index) {
-            final bool isFooter = hasFooter && index == itemCount - 1;
-            return isFooter
-                ? _buildFooter(context)
-                : _buildItem(context, index, geometry);
-          },
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final bool isFooter = hasFooter && index == itemCount - 1;
+              return isFooter
+                  ? _buildFooter(context)
+                  : _buildItem(context, index, geometry);
+            },
+            childCount: itemCount,
+            findChildIndexCallback: _findChildIndexByKey,
+          ),
         );
       },
     );

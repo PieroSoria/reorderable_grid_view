@@ -96,45 +96,49 @@ class _HomePageState extends State<_HomePage> {
         backgroundColor: scheme.primary,
         foregroundColor: scheme.onPrimary,
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Text(
-            'Mantén pulsada una tarjeta y arrástrala a otra posición para '
-            'reordenar la lista.',
-            style: TextStyle(fontSize: 14, height: 1.4),
-          ),
-          const SizedBox(height: 8),
-          ReorderableGrid<_Item>(
-            items: _items,
-            onReorder: _onReorder,
-            itemBuilder: (context, item, index) =>
-                _ItemCard(item: item, index: index),
-            // Celda final opcional y no arrastrable. El builder puede devolver
-            // `null` para no mostrar ninguna celda (y poner el botón "Agregar"
-            // fuera del grid, en tu propio layout). Soltar un elemento sobre
-            // ella lo mueve a la última posición.
-            onAddItemBuilder: (context) => Padding(
-              padding: const EdgeInsets.all(2),
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: scheme.primary,
-                  foregroundColor: scheme.onPrimary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                icon: const Icon(Icons.add),
-                label: const Text('Agregar'),
-                onPressed: _addItem,
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Text(
+                'Mantén pulsada una tarjeta y arrástrala a otra posición para '
+                'reordenar la lista.',
+                style: const TextStyle(fontSize: 14, height: 1.4),
               ),
             ),
-            crossAxisCount: 3,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 3 / 4,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverReorderableGrid<_Item>(
+              items: _items,
+              onReorder: _onReorder,
+              itemBuilder: (context, item, index) =>
+                  _ItemCard(item: item, index: index),
+              // Celda final opcional y no arrastrable. El builder puede
+              // devolver `null` para no mostrar ninguna celda (y poner el
+              // botón "Agregar" fuera del grid, en tu propio layout). Soltar
+              // un elemento sobre ella lo mueve a la última posición.
+              onAddItemBuilder: (context) => Padding(
+                padding: const EdgeInsets.all(2),
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: scheme.primary,
+                    foregroundColor: scheme.onPrimary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Agregar'),
+                  onPressed: _addItem,
+                ),
+              ),
+              crossAxisCount: 3,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 3 / 4,
+            ),
           ),
         ],
       ),

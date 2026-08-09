@@ -20,7 +20,10 @@ void main() {
     await tester.pump();
 
     expect(
-      find.byWidgetPredicate((widget) => widget is ReorderableGrid),
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is ReorderableGrid || widget is SliverReorderableGrid,
+      ),
       findsOneWidget,
     );
     expect(find.text('Manzana'), findsOneWidget);

@@ -440,4 +440,119 @@ void main() {
       expect(state.items, ['B', 'C', 'D', 'A']);
     },
   );
+
+  // ---------------------------------------------------------------------------
+  // Variante sliver: SliverReorderableGrid dentro de un CustomScrollView.
+  // ---------------------------------------------------------------------------
+
+  testWidgets('sliver: renderiza y reordena dentro de un CustomScrollView', (
+    tester,
+  ) async {
+    _setSurfaceSize(tester);
+    await tester.pumpWidget(
+      _SliverHarness(initialItems: const ['A', 'B', 'C', 'D']),
+    );
+
+    expect(find.text('A'), findsOneWidget);
+    expect(find.text('D'), findsOneWidget);
+
+    await _longPressDrag(
+      tester,
+      tester.getCenter(find.text('A')),
+      tester.getCenter(find.text('D')),
+    );
+
+    final _SliverHarnessState state = tester.state<_SliverHarnessState>(
+      find.byType(_SliverHarness),
+    );
+    expect(state.moves, [
+      [0, 3],
+    ]);
+    expect(state.items, ['B', 'C', 'D', 'A']);
+  });
+
+  testWidgets('sliver: la celda final mueve el elemento al final', (
+    tester,
+  ) async {
+    _setSurfaceSize(tester);
+    await tester.pumpWidget(
+      _SliverHarness(
+        initialItems: const ['A', 'B', 'C', 'D'],
+        showFooter: true,
+      ),
+    );
+
+    expect(find.text('ADD'), findsOneWidget);
+
+    await _longPressDrag(
+      tester,
+      tester.getCenter(find.text('B')),
+      tester.getCenter(find.text('ADD')),
+    );
+
+    final _SliverHarnessState state = tester.state<_SliverHarnessState>(
+      find.byType(_SliverHarness),
+    );
+    expect(state.moves, [
+      [1, 3],
+    ]);
+    expect(state.items, ['A', 'C', 'D', 'B']);
+  });
+}
+
+/// Harness que usa [SliverReorderableGrid] dentro de un [CustomScrollView].
+class _SliverHarness extends StatefulWidget {
+  const _SliverHarness({required this.initialItems, this.showFooter = false});
+
+  final List<String> initialItems;
+  final bool showFooter;
+
+  @override
+  State<_SliverHarness> createState() => _SliverHarnessState();
+}
+
+class _SliverHarnessState extends State<_SliverHarness> {
+  late List<String> items = List.of(widget.initialItems);
+  final List<List<int>> moves = [];
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.all(16),
+              sliver: SliverReorderableGrid<String>(
+                items: items,
+                onReorder: (oldIndex, newIndex) {
+                  moves.add([oldIndex, newIndex]);
+                  if (oldIndex == newIndex) return;
+                  setState(() {
+                    final String moved = items.removeAt(oldIndex);
+                    items.insert(newIndex, moved);
+                  });
+                },
+                itemBuilder: (context, item, index) => Container(
+                  color: index.isEven ? Colors.blueGrey : Colors.teal,
+                  alignment: Alignment.center,
+                  child: Text(item),
+                ),
+                onAddItemBuilder: widget.showFooter
+                    ? (context) => const ColoredBox(
+                        color: Colors.amber,
+                        child: Center(child: Text('ADD')),
+                      )
+                    : null,
+                crossAxisCount: 2,
+                childAspectRatio: 1,
+                mainAxisSpacing: 6,
+                crossAxisSpacing: 6,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
