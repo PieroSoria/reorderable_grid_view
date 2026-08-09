@@ -1,10 +1,3 @@
-## 0.1.0
-
-* API por índices estilo `ListView.builder`: `itemCount` + `itemBuilder` +
-  `itemKey(index)` (se elimina el genérico `T` y el parámetro `items`).
-* La clave por defecto pasa a ser `ValueKey<int>(index)` (el estado viaja con
-  la celda); usa `itemKey` para que el estado siga al elemento.
-
 ## 0.0.1
 
 * Widget `ReorderableGrid<T>` reordenable con drag & drop nativo.
