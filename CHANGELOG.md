@@ -9,5 +9,8 @@
 * Botón "Agregar" desacoplado: sin `onAddItemBuilder` no hay celda final y el
   botón puede ir en cualquier lugar del layout del usuario.
 * Implementación desacoplada en `lib/src/` y exportada desde el paquete.
+* Optimización de recursos: `ValueNotifier` para el reorden en vivo (solo se
+  reconstruye el grid durante el arrastre, no el widget completo ni la celda
+  final) y `RepaintBoundary` para aislar el pintado del grid.
 * Preservación de estado mediante claves y `findChildIndexCallback`.
 * Sin dependencias externas.

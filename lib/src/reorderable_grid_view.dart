@@ -267,7 +267,12 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
   /// `null` fuera del arrastre; durante el arrastre contiene una copia de
   /// [ReorderableGrid.items] que se reordena en vivo mientras el elemento
   /// sobrevuela celdas.
-  List<T>? _preview;
+  ///
+  /// Es un [ValueNotifier] para que cada cambio de orden durante el arrastre
+  /// reconstruya **solo el grid** (vía `ValueListenableBuilder`) y no el
+  /// [State] completo: evita re-resolver la celda final ([onAddItemBuilder])
+  /// y re-crear el `LayoutBuilder` en cada paso del arrastre.
+  final ValueNotifier<List<T>?> _preview = ValueNotifier<List<T>?>(null);
 
   /// Índice original (en la lista del padre) del elemento que se arrastra.
   int? _originalIndex;
@@ -281,7 +286,13 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
 
   /// La lista que se renderiza: durante un arrastre la previsualización, en
   /// reposo la lista controlada del padre.
-  List<T> get _displayed => _preview ?? widget.items;
+  List<T> get _displayed => _preview.value ?? widget.items;
+
+  @override
+  void dispose() {
+    _preview.dispose();
+    super.dispose();
+  }
 
   /// Resuelve la clave de un elemento: usa [ReorderableGrid.itemKey] si está
   /// definido o cae en `ValueKey<T>(item)` en caso contrario.
@@ -323,19 +334,17 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
   /// Inicia una operación de arrastre: congela una previsualización de la
   /// lista que se podrá reordenar en vivo sin tocar la lista del padre.
   void _beginDrag(int index) {
-    setState(() {
-      _originalIndex = index;
-      _previewMovedIndex = index;
-      _preview = List<T>.of(widget.items);
-      // Sin animaciones al iniciar el arrastre.
-      _lastIndexByKey.clear();
-    });
+    _originalIndex = index;
+    _previewMovedIndex = index;
+    // Sin animaciones al iniciar el arrastre.
+    _lastIndexByKey.clear();
+    _preview.value = List<T>.of(widget.items);
   }
 
   /// Reordena la previsualización moviendo al elemento arrastrado (que está en
   /// [_previewMovedIndex]) a la posición [targetIndex].
   void _previewMoveTo(int targetIndex) {
-    final List<T>? preview = _preview;
+    final List<T>? preview = _preview.value;
     final int? moved = _previewMovedIndex;
     if (preview == null ||
         moved == null ||
@@ -344,11 +353,11 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
         targetIndex >= preview.length) {
       return;
     }
-    setState(() {
-      final T dragged = preview.removeAt(moved);
-      preview.insert(targetIndex, dragged);
-      _previewMovedIndex = targetIndex;
-    });
+    final List<T> reordered = List<T>.of(preview);
+    final T dragged = reordered.removeAt(moved);
+    reordered.insert(targetIndex, dragged);
+    _previewMovedIndex = targetIndex;
+    _preview.value = reordered;
   }
 
   /// Confirma el arrastre: restaura la vista controlada del padre e invoca
@@ -361,11 +370,9 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
     final int? original = _originalIndex;
     final int? moved = finalIndex ?? _previewMovedIndex;
 
-    setState(() {
-      _preview = null;
-      _previewMovedIndex = null;
-      _originalIndex = null;
-    });
+    _preview.value = null;
+    _previewMovedIndex = null;
+    _originalIndex = null;
 
     if (original != null && moved != null && original != moved) {
       widget.onReorder(original, moved);
@@ -375,11 +382,9 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
   /// Cancela el arrastre: descarta la previsualización y devuelve la lista a
   /// su orden original (las celdas se deslizan de vuelta).
   void _cancelDrag() {
-    setState(() {
-      _preview = null;
-      _previewMovedIndex = null;
-      _originalIndex = null;
-    });
+    _preview.value = null;
+    _previewMovedIndex = null;
+    _originalIndex = null;
   }
 
   /// Calcula la distancia (en fracciones del tamaño de la celda) que separa la
@@ -402,75 +407,86 @@ class _ReorderableGridState<T> extends State<_ReorderableGridBase<T>> {
   Widget build(BuildContext context) {
     _resolvedAddItemCell = _resolveAddItemCell(context);
 
-    final bool hasFooter = _hasFooterCell;
-    final int itemCount = _displayed.length + (hasFooter ? 1 : 0);
+    // El grid escucha los cambios del orden en vivo (arrastre) para
+    // reconstruirse solo él, sin reconstruir el resto del widget.
+    return ValueListenableBuilder<List<T>?>(
+      valueListenable: _preview,
+      builder: (context, preview, _) {
+        final bool hasFooter = _hasFooterCell;
+        final int itemCount =
+            (preview ?? widget.items).length + (hasFooter ? 1 : 0);
 
-    // Variante "caja": un GridView (puede anidarse y desplazarse solo).
-    if (widget is ReorderableGrid<T>) {
-      final ReorderableGrid<T> box = widget as ReorderableGrid<T>;
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          final _GridGeometry geometry = _GridGeometry.fromConstraints(
-            constraints,
-            columns: widget.crossAxisCount,
-            crossAxisSpacing: widget.crossAxisSpacing,
-            mainAxisSpacing: widget.mainAxisSpacing,
-            childAspectRatio: widget.childAspectRatio,
-          );
+        // Variante "caja": un GridView (puede anidarse y desplazarse solo).
+        if (widget is ReorderableGrid<T>) {
+          final ReorderableGrid<T> box = widget as ReorderableGrid<T>;
+          return RepaintBoundary(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final _GridGeometry geometry = _GridGeometry.fromConstraints(
+                  constraints,
+                  columns: widget.crossAxisCount,
+                  crossAxisSpacing: widget.crossAxisSpacing,
+                  mainAxisSpacing: widget.mainAxisSpacing,
+                  childAspectRatio: widget.childAspectRatio,
+                );
 
-          return GridView.builder(
-            shrinkWrap: box.shrinkWrap,
-            physics: box.physics,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: widget.crossAxisCount,
-              mainAxisSpacing: widget.mainAxisSpacing,
-              crossAxisSpacing: widget.crossAxisSpacing,
-              childAspectRatio: widget.childAspectRatio,
+                return GridView.builder(
+                  shrinkWrap: box.shrinkWrap,
+                  physics: box.physics,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: widget.crossAxisCount,
+                    mainAxisSpacing: widget.mainAxisSpacing,
+                    crossAxisSpacing: widget.crossAxisSpacing,
+                    childAspectRatio: widget.childAspectRatio,
+                  ),
+                  itemCount: itemCount,
+                  // Clave -> índice, para migrar correctamente los elementos
+                  // existentes (conservando su Estado) a sus nuevas celdas.
+                  findChildIndexCallback: _findChildIndexByKey,
+                  itemBuilder: (context, index) {
+                    final bool isFooter = hasFooter && index == itemCount - 1;
+                    return isFooter
+                        ? _buildFooter(context)
+                        : _buildItem(context, index, geometry);
+                  },
+                );
+              },
             ),
-            itemCount: itemCount,
-            // Clave -> índice, para migrar correctamente los elementos
-            // existentes (conservando su Estado) a sus nuevas celdas.
-            findChildIndexCallback: _findChildIndexByKey,
-            itemBuilder: (context, index) {
-              final bool isFooter = hasFooter && index == itemCount - 1;
-              return isFooter
-                  ? _buildFooter(context)
-                  : _buildItem(context, index, geometry);
-            },
           );
-        },
-      );
-    }
+        }
 
-    // Variante sliver: un SliverGrid para usar dentro de un CustomScrollView.
-    return SliverLayoutBuilder(
-      builder: (context, constraints) {
-        final _GridGeometry geometry = _GridGeometry.fromConstraints(
-          // El ancho disponible es el eje transversal del sliver.
-          BoxConstraints(maxWidth: constraints.crossAxisExtent),
-          columns: widget.crossAxisCount,
-          crossAxisSpacing: widget.crossAxisSpacing,
-          mainAxisSpacing: widget.mainAxisSpacing,
-          childAspectRatio: widget.childAspectRatio,
-        );
+        // Variante sliver: un SliverGrid para usar dentro de un
+        // CustomScrollView.
+        return SliverLayoutBuilder(
+          builder: (context, constraints) {
+            final _GridGeometry geometry = _GridGeometry.fromConstraints(
+              // El ancho disponible es el eje transversal del sliver.
+              BoxConstraints(maxWidth: constraints.crossAxisExtent),
+              columns: widget.crossAxisCount,
+              crossAxisSpacing: widget.crossAxisSpacing,
+              mainAxisSpacing: widget.mainAxisSpacing,
+              childAspectRatio: widget.childAspectRatio,
+            );
 
-        return SliverGrid(
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: widget.crossAxisCount,
-            mainAxisSpacing: widget.mainAxisSpacing,
-            crossAxisSpacing: widget.crossAxisSpacing,
-            childAspectRatio: widget.childAspectRatio,
-          ),
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              final bool isFooter = hasFooter && index == itemCount - 1;
-              return isFooter
-                  ? _buildFooter(context)
-                  : _buildItem(context, index, geometry);
-            },
-            childCount: itemCount,
-            findChildIndexCallback: _findChildIndexByKey,
-          ),
+            return SliverGrid(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: widget.crossAxisCount,
+                mainAxisSpacing: widget.mainAxisSpacing,
+                crossAxisSpacing: widget.crossAxisSpacing,
+                childAspectRatio: widget.childAspectRatio,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final bool isFooter = hasFooter && index == itemCount - 1;
+                  return isFooter
+                      ? _buildFooter(context)
+                      : _buildItem(context, index, geometry);
+                },
+                childCount: itemCount,
+                findChildIndexCallback: _findChildIndexByKey,
+              ),
+            );
+          },
         );
       },
     );
