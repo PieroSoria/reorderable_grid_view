@@ -1,0 +1,21 @@
+name: reorderable_grid_view_example
+description: "Ejemplo de uso del widget ReorderableGrid<T>."
+publish_to: "none"
+version: 1.0.0
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  reorderable_grid_view:
+    path: ../
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
